@@ -18,9 +18,11 @@ import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Response;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.util.Callback;
+import org.eclipse.jetty.util.URIUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -33,11 +35,18 @@ import java.util.Map;
 @Component
 public class AuthServiceServerDummy implements Stub {
     private static final Logger LOGGER = LoggerFactory.getLogger(AuthServiceServerDummy.class);
+    private static final String API_KEY_HEADER = "ncc-internal-api-key";
 
     private Server server;
     private int port = 0;
 
     private final AuthServiceClient authServiceClient;
+
+    @Value("${anrr.sso.identity.adapter.url:}")
+    private String configuredAdapterUrl;
+
+    @Value("${authorisation.service.api.key:}")
+    private String apiKey;
 
     @Autowired
     public AuthServiceServerDummy(AuthServiceClient crowdClient) {
@@ -97,13 +106,24 @@ public class AuthServiceServerDummy implements Stub {
         public boolean handle(Request request, Response response, Callback callback) throws Exception {
             response.getHeaders().put(HttpHeader.CONTENT_TYPE, "text/xml;charset=utf-8");
 
-            if(!request.getHttpURI().getPath().contains("/authorisation-service/v2/authresource/")) {
+            final String path = URIUtil.decodePath(request.getHttpURI().getPath());
+            final boolean legacyPath = path.contains("/authorisation-service/v2/authresource/");
+            final boolean accountsPath = path.startsWith("/accounts/");
+            final boolean supportedRootPath = path.equals("/validate") || path.startsWith("/user/") ||
+                    path.startsWith("/history/user/");
+            if (!legacyPath && !accountsPath && !supportedRootPath) {
                 response.setStatus(HttpServletResponse.SC_NOT_FOUND);
                 return false;
             }
 
-            final String userKey = request.getHttpURI().getPath().contains("validate") ? StringUtils.substringAfter(request.getHeaders().get("Authorization"), "Bearer").trim() :
-                                                        StringUtils.substringAfterLast(request.getHttpURI().getPath(), "/");
+            if (StringUtils.isNotBlank(apiKey) && !StringUtils.equals(apiKey,
+                    request.getHeaders().get(API_KEY_HEADER))) {
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                return false;
+            }
+
+            final String userKey = path.contains("validate") ? StringUtils.substringAfter(request.getHeaders().get("Authorization"), "Bearer").trim() :
+                                                        StringUtils.substringAfterLast(path, "/");
 
             final SSOUser user = usermap.get(userKey);
             if (user == null) {
@@ -200,6 +220,12 @@ public class AuthServiceServerDummy implements Stub {
     @PostConstruct
     @RetryFor(attempts = 5, value = Exception.class)
     public void start() {
+        if (StringUtils.isNotBlank(configuredAdapterUrl)) {
+            LOGGER.info("Using configured SSO identity adapter restUrl: {}", configuredAdapterUrl);
+            ReflectionTestUtils.setField(authServiceClient, "restUrl", configuredAdapterUrl);
+            return;
+        }
+
         server = new Server(0);
         server.setHandler(new SSOTestHandler());
         try {
@@ -210,14 +236,16 @@ public class AuthServiceServerDummy implements Stub {
 
         this.port = ((NetworkConnector)server.getConnectors()[0]).getLocalPort();
 
-        final String restUrl = String.format("http://localhost:%s/authorisation-service/v2/authresource", getPort());
+        final String restUrl = String.format("http://localhost:%s", getPort());
         LOGGER.info("SSO dummy server restUrl: {}", restUrl);
         ReflectionTestUtils.setField(authServiceClient, "restUrl", restUrl);
     }
 
     @PreDestroy
     public void stop() throws Exception {
-        server.stop();
+        if (server != null) {
+            server.stop();
+        }
     }
 
     public int getPort() {
