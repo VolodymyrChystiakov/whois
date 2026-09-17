@@ -678,6 +678,7 @@ public class WhoisRestOidcAuthTestIntegration extends WhoisRestServiceTestIntegr
 
     @Test
     public void create_succeeds_with_bearer_token_ANY_mnt_with_sso() {
+        final int introspectionRequests = oAuthTokenIntrospectDummy.getIntrospectionRequests();
 
         final WhoisResources whoisResources = getWebTarget("whois/test/person", getBearerTokenForOidc(BASIC_AUTH_PERSON_ANY_MNT), MediaType.APPLICATION_XML)
                 .post(Entity.entity(map(PAULETH_PALTHEN), MediaType.APPLICATION_XML), WhoisResources.class);
@@ -687,6 +688,32 @@ public class WhoisRestOidcAuthTestIntegration extends WhoisRestServiceTestIntegr
         final WhoisObject object = whoisResources.getWhoisObjects().getFirst();
 
         assertPersonObject(whoisResources, object);
+        if (!Boolean.getBoolean("oauth.token.introspection")) {
+            assertThat(oAuthTokenIntrospectDummy.getIntrospectionRequests(), is(introspectionRequests));
+        }
+    }
+
+    @Test
+    public void create_with_bearer_token_wrong_azp_fails() {
+        final String bearerToken = "Bearer " + convertToOidcJwt(
+                APIKEY_TO_CLAIMSET.get(BASIC_AUTH_PERSON_OWNER_MNT),
+                oAuthTokenIntrospectDummy.getJwk(),
+                oAuthTokenIntrospectDummy.getPort(),
+                "wrong-client");
+
+        final Response response = getWebTarget("whois/test/person", bearerToken, MediaType.APPLICATION_XML)
+                .post(Entity.entity(map(PAULETH_PALTHEN), MediaType.APPLICATION_XML), Response.class);
+
+        assertThat(response.getStatus(), is(UNAUTHORIZED.getStatusCode()));
+    }
+
+    @Test
+    public void create_with_bearer_token_wrong_audience_fails() {
+        final Response response = getWebTarget("whois/test/person",
+                getBearerTokenForOidc(BASIC_AUTH_PERSON_OWNER_MNT_WRONG_AUDIENCE), MediaType.APPLICATION_XML)
+                .post(Entity.entity(map(PAULETH_PALTHEN), MediaType.APPLICATION_XML), Response.class);
+
+        assertThat(response.getStatus(), is(UNAUTHORIZED.getStatusCode()));
     }
 
     @Test

@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.http.client.support.BasicAuthenticationInterceptor;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -113,7 +114,7 @@ public class SecurityConfig {
     @Bean
     public DefaultTokenValidator defaultTokenValidator(@Value("${apikey.max.scope:10}") final int maxScopes,
                                                  @Value("${oauth.token.introspection:false}") final boolean shouldUseTokenInspector,
-                                                 @Qualifier("keycloakIntrospector") final OpaqueTokenIntrospector tokenIntrospector,
+                                                 @Qualifier("keycloakIntrospector") @Lazy final OpaqueTokenIntrospector tokenIntrospector,
                                                  final NimbusJwtDecoder jwtDecoder) {
         return new DefaultTokenValidator(
                 maxScopes,
@@ -125,7 +126,7 @@ public class SecurityConfig {
 
     @Bean
     public OidcTokenValidator oidcTokenValidator(@Value("${oauth.token.introspection:false}") final boolean shouldUseTokenInspector,
-                                                 @Qualifier("oidcIntrospector") final OpaqueTokenIntrospector tokenIntrospector,
+                                                 @Qualifier("oidcIntrospector") @Lazy final OpaqueTokenIntrospector tokenIntrospector,
                                                  final NimbusJwtDecoder jwtDecoder) {
         return new OidcTokenValidator(
                 shouldUseTokenInspector,
@@ -182,6 +183,7 @@ public class SecurityConfig {
     }
 
     @Bean
+    @Lazy
     public OpaqueTokenIntrospector oidcIntrospector(final OidcConfigurationProvider oidcProvider,
                                                               @Value("${oidc.session.client.id:}") final String oidcClientId,
                                                               @Value("${oidc.session.client.password:}") final String oidcClientPassword) {
@@ -189,6 +191,7 @@ public class SecurityConfig {
     }
 
     @Bean
+    @Lazy
     public OpaqueTokenIntrospector keycloakIntrospector(final OidcConfigurationProvider oidcProvider,
                                                         @Value("${keycloak.idp.client:}") final String whoisKeycloakId,
                                                         @Value("${keycloak.idp.password:}")  final String keycloakPassword) {

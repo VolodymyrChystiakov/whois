@@ -51,6 +51,10 @@ public class OptionalOidcAuthFilter extends OncePerRequestFilter {
             }
 
             if (!canProceed(bearerToken)){
+                if (isOidcEnabled) {
+                    final Authentication authResult = new UnknownAuthenticationToken(new UnknownSession.Builder().errorStatus("Invalid Bearer Token").build());
+                    SecurityContextHolder.getContext().setAuthentication(authResult);
+                }
                 return;
             }
 

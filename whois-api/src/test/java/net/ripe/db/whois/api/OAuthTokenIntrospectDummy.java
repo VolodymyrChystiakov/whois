@@ -44,6 +44,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static net.ripe.db.whois.api.AbstractIntegrationTest.getRequestBody;
 import static net.ripe.db.whois.api.ApiKeysAuthServerDummy.BASIC_AUTH_EXPIRED;
@@ -76,6 +77,7 @@ public class OAuthTokenIntrospectDummy implements Stub {
 
     private final String whoisKeycloakId;
     private RSAKey jwk;
+    private final AtomicInteger introspectionRequests = new AtomicInteger();
 
     public static final List<String> ACCOUNT_AUD = List.of("account");
 
@@ -132,16 +134,30 @@ public class OAuthTokenIntrospectDummy implements Stub {
         }
     }
 
+    public static String convertToOidcJwt(final JWTClaimsSet claims, final RSAKey keyPair, final int port, final String clientId) {
+        try {
+            final JWTClaimsSet oidcJwt = new JWTClaimsSet.Builder(claims)
+                    .claim(OAuthUtils.OAUTH_CUSTOM_AZP_PARAM, clientId)
+                    .build();
+            return commonJwtValues("", keyPair, port, oidcJwt);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     private static class ApiPublicKeyLoaderTestHandler extends Handler.Abstract {
 
         private final RSAKey jwk;
         private final String whoisKeycloakId;
+        private final AtomicInteger introspectionRequests;
 
         private static String ISSUER = "realms/ripe-ncc";
 
-        ApiPublicKeyLoaderTestHandler(final RSAKey jwk, final String whoisKeycloakId) {
+        ApiPublicKeyLoaderTestHandler(final RSAKey jwk, final String whoisKeycloakId,
+                                      final AtomicInteger introspectionRequests) {
             this.jwk = jwk;
             this.whoisKeycloakId = whoisKeycloakId;
+            this.introspectionRequests = introspectionRequests;
         }
 
         @Override
@@ -150,6 +166,7 @@ public class OAuthTokenIntrospectDummy implements Stub {
            response.getHeaders().put(HttpHeader.CONTENT_TYPE, "text/xml;charset=utf-8");
 
             if (request.getHttpURI().getPath().contains("ripe-ncc/protocol/openid-connect/token/introspect")) {
+                introspectionRequests.incrementAndGet();
                 try {
 
                     final String body = getRequestBody(request);
@@ -279,7 +296,7 @@ public class OAuthTokenIntrospectDummy implements Stub {
         this.initKeys();
 
         server = new Server(0);
-        server.setHandler(new ApiPublicKeyLoaderTestHandler(jwk, whoisKeycloakId));
+        server.setHandler(new ApiPublicKeyLoaderTestHandler(jwk, whoisKeycloakId, introspectionRequests));
         try {
             server.start();
         } catch (Exception e) {
@@ -327,5 +344,9 @@ public class OAuthTokenIntrospectDummy implements Stub {
 
     public RSAKey getJwk() {
         return jwk;
+    }
+
+    public int getIntrospectionRequests() {
+        return introspectionRequests.get();
     }
 }
