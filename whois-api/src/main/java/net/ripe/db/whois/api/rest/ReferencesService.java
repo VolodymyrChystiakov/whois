@@ -189,8 +189,8 @@ public class ReferencesService {
             final RpslObject mntner = createMntnerWithDummyAdminC(whoisResources);
             actionRequests.add(new ActionRequest(mntner, Action.CREATE));
 
-            final RpslObject person = createPerson(whoisResources);
-            actionRequests.add(new ActionRequest(person, Action.CREATE));
+            final RpslObject companion = createCompanion(whoisResources);
+            actionRequests.add(new ActionRequest(companion, Action.CREATE));
 
             final RpslObject updatedMntner = replaceAdminC(mntner, "AUTO-1");
             actionRequests.add(new ActionRequest(updatedMntner, Action.MODIFY));
@@ -220,8 +220,26 @@ public class ReferencesService {
         }
     }
 
-    private RpslObject createPerson(final WhoisResources whoisResources) {
-        return convertToRpslObject(whoisResources, ObjectType.PERSON);
+    private RpslObject createCompanion(final WhoisResources whoisResources) {
+        WhoisObject companion = null;
+
+        for (final WhoisObject whoisObject : whoisResources.getWhoisObjects()) {
+            if (ObjectType.PERSON.getName().equalsIgnoreCase(whoisObject.getType()) ||
+                    ObjectType.ROLE.getName().equalsIgnoreCase(whoisObject.getType())) {
+                if (companion != null) {
+                    setErrorMessage(whoisResources, "Exactly one PERSON or ROLE is required in WhoisResources");
+                    throw new ReferenceUpdateFailedException(Response.Status.BAD_REQUEST, whoisResources);
+                }
+                companion = whoisObject;
+            }
+        }
+
+        if (companion == null) {
+            setErrorMessage(whoisResources, "Unable to find PERSON or ROLE in WhoisResources");
+            throw new ReferenceUpdateFailedException(Response.Status.BAD_REQUEST, whoisResources);
+        }
+
+        return whoisObjectMapper.map(companion, FormattedServerAttributeMapper.class);
     }
 
     private RpslObject createMntnerWithDummyAdminC(final WhoisResources whoisResources) {

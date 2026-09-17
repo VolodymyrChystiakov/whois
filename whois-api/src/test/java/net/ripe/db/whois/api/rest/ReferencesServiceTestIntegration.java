@@ -144,6 +144,123 @@ public class ReferencesServiceTestIntegration extends AbstractHttpsIntegrationTe
     }
 
     @Test
+    public void create_role_mntner_pair_success_using_sso() {
+        final WhoisResources response = getWebTarget("whois/references/TEST", "valid-token", MediaType.APPLICATION_JSON_TYPE.getType())
+                .post(Entity.entity(roleMntnerPair("ROLE-SSO-MNT", "ROLE-SSO-MNT", "+3161234"), MediaType.APPLICATION_JSON_TYPE), WhoisResources.class);
+
+        assertThat(response.getWhoisObjects(), hasSize(2));
+
+        final WhoisObject role = getWhoisObject(response, "role");
+        final String roleNic = getAttribute(role, "nic-hdl");
+        assertThat(roleNic, is("SR1-TEST"));
+
+        final WhoisObject mntner = getWhoisObject(response, "mntner");
+        assertThat(getAttribute(mntner, "admin-c"), is(roleNic));
+    }
+
+    @Test
+    public void create_role_and_person_mntner_pair_is_rejected() {
+        final WhoisResources whoisResources = mapRpslObjects(
+                role("ROLE-BOTH-MNT", "+3161234"),
+                RpslObject.parse(
+                        "person:    Some Person\n" +
+                        "address:   Amsterdam\n" +
+                        "phone:     +3161234\n" +
+                        "e-mail:    noreply@ripe.net\n" +
+                        "nic-hdl:   TP2-TEST\n" +
+                        "mnt-by:    ROLE-BOTH-MNT\n" +
+                        "source:    TEST"),
+                ssoMntner("ROLE-BOTH-MNT"));
+
+        try {
+            getWebTarget("whois/references/TEST", "valid-token", "")
+                    .post(Entity.entity(whoisResources, MediaType.APPLICATION_JSON_TYPE), WhoisResources.class);
+            fail();
+        } catch (BadRequestException e) {
+            final WhoisResources response = e.getResponse().readEntity(WhoisResources.class);
+            RestTest.assertErrorMessage(response, 0, "Error", "Exactly one PERSON or ROLE is required in WhoisResources");
+            assertThat(objectExists(ObjectType.MNTNER, "ROLE-BOTH-MNT"), is(false));
+            assertThat(objectExists(ObjectType.ROLE, "SR1-TEST"), is(false));
+            assertThat(objectExists(ObjectType.PERSON, "TP2-TEST"), is(false));
+        }
+    }
+
+    @Test
+    public void create_duplicate_role_companions_are_rejected() {
+        final WhoisResources whoisResources = mapRpslObjects(
+                role("ROLE-DUP-COMP-MNT", "+3161234"),
+                role("ROLE-DUP-COMP-MNT", "+3165678"),
+                ssoMntner("ROLE-DUP-COMP-MNT"));
+
+        try {
+            getWebTarget("whois/references/TEST", "valid-token", "")
+                    .post(Entity.entity(whoisResources, MediaType.APPLICATION_JSON_TYPE), WhoisResources.class);
+            fail();
+        } catch (BadRequestException e) {
+            final WhoisResources response = e.getResponse().readEntity(WhoisResources.class);
+            RestTest.assertErrorMessage(response, 0, "Error", "Exactly one PERSON or ROLE is required in WhoisResources");
+            assertThat(objectExists(ObjectType.MNTNER, "ROLE-DUP-COMP-MNT"), is(false));
+            assertThat(objectExists(ObjectType.ROLE, "SR1-TEST"), is(false));
+        }
+    }
+
+    @Test
+    public void create_role_mntner_pair_auth_fail_rolls_back() {
+        final WhoisResources whoisResources = roleMntnerPair("ROLE-AUTH-MNT", "OWNER-MNT", "+3161234");
+
+        try {
+            getWebTarget("whois/references/TEST", "valid-token", "")
+                    .post(Entity.entity(whoisResources, MediaType.APPLICATION_JSON_TYPE), WhoisResources.class);
+            fail();
+        } catch (NotAuthorizedException e) {
+            final WhoisResources response = e.getResponse().readEntity(WhoisResources.class);
+            assertThat(response.getErrorMessages(), hasSize(1));
+            assertThat(response.getErrorMessages().get(0).toString(), is("Authorisation for [role] SR1-TEST failed\nusing \"mnt-by:\"\nnot authenticated by: OWNER-MNT"));
+            assertThat(objectExists(ObjectType.MNTNER, "ROLE-AUTH-MNT"), is(false));
+            assertThat(objectExists(ObjectType.ROLE, "SR1-TEST"), is(false));
+        }
+    }
+
+    @Test
+    public void create_role_mntner_pair_syntax_fail_rolls_back() {
+        final WhoisResources whoisResources = roleMntnerPair("ROLE-SYNTAX-MNT", "ROLE-SYNTAX-MNT", "INVALID");
+
+        try {
+            getWebTarget("whois/references/TEST", "valid-token", "")
+                    .post(Entity.entity(whoisResources, MediaType.APPLICATION_JSON_TYPE), WhoisResources.class);
+            fail();
+        } catch (BadRequestException e) {
+            final WhoisResources response = e.getResponse().readEntity(WhoisResources.class);
+            assertThat(response.getErrorMessages(), hasSize(1));
+            assertThat(response.getErrorMessages().get(0).toString(), containsString("Syntax error in INVALID"));
+            assertThat(objectExists(ObjectType.MNTNER, "ROLE-SYNTAX-MNT"), is(false));
+            assertThat(objectExists(ObjectType.ROLE, "SR1-TEST"), is(false));
+        }
+    }
+
+    @Test
+    public void create_role_mntner_pair_duplicate_mntner_rolls_back() {
+        databaseHelper.addObject(
+                "mntner:        ROLE-DUP-MNT\n" +
+                "descr:         Existing Maintainer\n" +
+                "admin-c:       TP1-TEST\n" +
+                "upd-to:        person@net.net\n" +
+                "auth:          SSO person@net.net\n" +
+                "mnt-by:        ROLE-DUP-MNT\n" +
+                "source:        TEST");
+
+        try {
+            getWebTarget("whois/references/TEST", "valid-token", "")
+                    .post(Entity.entity(roleMntnerPair("ROLE-DUP-MNT", "ROLE-DUP-MNT", "+3161234"), MediaType.APPLICATION_JSON_TYPE), WhoisResources.class);
+            fail();
+        } catch (BadRequestException e) {
+            final WhoisResources response = e.getResponse().readEntity(WhoisResources.class);
+            RestTest.assertErrorMessage(response, 0, "Error", "mntner ROLE-DUP-MNT already exists");
+            assertThat(objectExists(ObjectType.ROLE, "SR1-TEST"), is(false));
+        }
+    }
+
+    @Test
     public void create_missing_whois_resources_body() {
         try {
             getWebTarget("whois/references/TEST", "valid-token", "")
@@ -1369,6 +1486,32 @@ public class ReferencesServiceTestIntegration extends AbstractHttpsIntegrationTe
     }
 
     // helper methods
+
+    private WhoisResources roleMntnerPair(final String mntnerName, final String roleMntBy, final String phone) {
+        return mapRpslObjects(role(roleMntBy, phone), ssoMntner(mntnerName));
+    }
+
+    private RpslObject role(final String roleMntBy, final String phone) {
+        return RpslObject.parse(
+                "role:          Some Role\n" +
+                "address:       Amsterdam\n" +
+                "phone:         " + phone + "\n" +
+                "e-mail:        noreply@ripe.net\n" +
+                "nic-hdl:       AUTO-1\n" +
+                "mnt-by:        " + roleMntBy + "\n" +
+                "source:        TEST");
+    }
+
+    private RpslObject ssoMntner(final String mntnerName) {
+        return RpslObject.parse(
+                "mntner:        " + mntnerName + "\n" +
+                "descr:         Maintainer\n" +
+                "admin-c:       AUTO-1\n" +
+                "upd-to:        person@net.net\n" +
+                "auth:          SSO person@net.net\n" +
+                "mnt-by:        " + mntnerName + "\n" +
+                "source:        TEST");
+    }
 
     private RpslObject lookup(final ObjectType objectType, final String primaryKey) {
         final WhoisResources response = RestTest.target(getPort(),
