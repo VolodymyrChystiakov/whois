@@ -127,8 +127,11 @@ public class AuthServiceServerDummy implements Stub {
 
             final SSOUser user = usermap.get(userKey);
             if (user == null) {
-                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                return false;
+                response.setStatus(accountsPath && !path.contains("/email/")
+                        ? HttpServletResponse.SC_BAD_REQUEST
+                        : HttpServletResponse.SC_NOT_FOUND);
+                callback.succeeded();
+                return true;
             }
 
             response.setStatus(HttpServletResponse.SC_OK);

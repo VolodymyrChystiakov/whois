@@ -15,6 +15,7 @@ class AuthServiceClientIdentityAdapterTest {
     private static final String API_KEY = "whois-test-adapter-key";
     private static final String EMAIL = "person@net.net";
     private static final String UUID = "906635c2-0405-429a-800b-0602bd716124";
+    private static final String UNKNOWN_UUID = "00000000-0000-0000-0000-000000000000";
 
     @Test
     void realAuthServiceClientUsesAccountsContract() throws Exception {
@@ -30,6 +31,10 @@ class AuthServiceClientIdentityAdapterTest {
             final AuthServiceClientException exception = assertThrows(AuthServiceClientException.class,
                     () -> client.getUuid("unknown@example.com"));
             assertThat(exception.getCode(), is(401));
+
+            final AuthServiceClientException unknownUuidException = assertThrows(AuthServiceClientException.class,
+                    () -> client.getUserDetails(UNKNOWN_UUID));
+            assertThat(unknownUuidException.getCode(), is(401));
         } finally {
             server.stop();
         }
