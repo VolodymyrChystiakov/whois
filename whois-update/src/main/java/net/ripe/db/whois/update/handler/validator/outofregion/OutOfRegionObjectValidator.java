@@ -12,6 +12,7 @@ import net.ripe.db.whois.update.domain.UpdateContext;
 import net.ripe.db.whois.update.domain.UpdateMessages;
 import net.ripe.db.whois.update.handler.validator.BusinessRuleValidator;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
@@ -29,10 +30,13 @@ public class OutOfRegionObjectValidator implements BusinessRuleValidator {
     private static final ImmutableList<ObjectType> TYPES = ImmutableList.of(AUT_NUM, ROUTE, ROUTE6);
 
     private final AuthoritativeResourceData authoritativeResourceData;
+    private final boolean allowOutOfRegion;
 
     @Autowired
-    public OutOfRegionObjectValidator(final AuthoritativeResourceData authoritativeResourceData) {
+    public OutOfRegionObjectValidator(final AuthoritativeResourceData authoritativeResourceData,
+                                      @Value("${anrr.allow.out.of.region:false}") final boolean allowOutOfRegion) {
         this.authoritativeResourceData = authoritativeResourceData;
+        this.allowOutOfRegion = allowOutOfRegion;
     }
 
     @Override
@@ -47,6 +51,10 @@ public class OutOfRegionObjectValidator implements BusinessRuleValidator {
 
     @Override
     public List<Message> performValidation(final PreparedUpdate update, final UpdateContext updateContext) {
+        if (allowOutOfRegion) {
+            return Collections.emptyList();
+        }
+
         if (updateContext.getSubject(update).hasPrincipal(Principal.OVERRIDE_MAINTAINER) || updateContext.getSubject(update).hasPrincipal(Principal.RS_MAINTAINER)) {
             return Collections.emptyList();
         }

@@ -31,16 +31,19 @@ public class SourceGenerator extends AttributeGenerator {
     private final RpslObjectDao rpslObjectDao;
     private final CIString source;
     private final CIString nonAuthSource;
+    private final boolean allowOutOfRegion;
 
     @Autowired
     public SourceGenerator(final AuthoritativeResourceData authoritativeResourceData,
                            @Value("${whois.source}") final String source,
                            @Value("${whois.nonauth.source}") final String nonAuthSource,
-                           final RpslObjectDao rpslObjectDao) {
+                           final RpslObjectDao rpslObjectDao,
+                           @Value("${anrr.allow.out.of.region:false}") final boolean allowOutOfRegion) {
         this.authoritativeResourceData = authoritativeResourceData;
         this.source = ciString(source);
         this.nonAuthSource = ciString(nonAuthSource);
         this.rpslObjectDao = rpslObjectDao;
+        this.allowOutOfRegion = allowOutOfRegion;
     }
 
     @Override
@@ -105,7 +108,7 @@ public class SourceGenerator extends AttributeGenerator {
 
         final CIString source = updatedObject.getValueForAttribute(SOURCE);
 
-        if (outOfRegion && source.equals(this.source)) {
+        if (!allowOutOfRegion && outOfRegion && source.equals(this.source)) {
             return cleanupAttributeType(update, updateContext, updatedObject, SOURCE, ImmutableSet.of(this.nonAuthSource.toString()));
         }
 
